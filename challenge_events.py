@@ -3,6 +3,7 @@ from CTFd.plugins.challenges import BaseChallenge
 from CTFd.utils.user import get_current_team
 from CTFd.utils.user import get_current_user
 
+
 def get_current_user_json():
     user = get_current_user()
     if user:
@@ -13,6 +14,7 @@ def get_current_user_json():
             "team": user.team_id
         }
 
+
 def get_current_team_json():
     team = get_current_team()
     if team:
@@ -22,15 +24,18 @@ def get_current_team_json():
             "hidden": team.hidden
         }
 
+
 def challenges():
     for c in BaseChallenge.__subclasses__():
         def wrap(func, data):
             def new_func(*args, **kwargs):
                 ret = func(*args, **kwargs)
-                current_app.events_manager.publish(data=eval(data), type='challenge')
+                current_app.events_manager.publish(
+                    data=eval(data), type='challenge'
+                )
                 return ret
             return new_func
-        
+
         c.create = wrap(c.create, '''
 {
     "type": "challenge_create",
