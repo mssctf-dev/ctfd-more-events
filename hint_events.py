@@ -1,19 +1,30 @@
 from CTFd.api.v1.hints import Hint, Hints, HintList, HintSchema, db
 from flask import request, current_app
+from .wrapper import wrap
 
 
 def hints():
-    orig_post = HintList.post
-    def new_post(self):
-        ret = orig_post(self)
+    def publish(data):
         current_app.events_manager.publish(
-            data={
-                'type': 'new_hint',
-                'hint': Hint.get(
-                    None, hint_id=ret['data']['id']
-                )['data']
-            },
-            type='hint'
+            data=data, type='hint'
         )
-        return ret
-    HintList.post = new_post
+
+    HintList.post = wrap(
+        HintList.post,
+        lambda ret: publish({
+            'type': 'hint_created',
+            'hint': Hint.get(
+                None, hint_id=ret['data']['id']
+            )['data']
+        })
+    )
+
+    Hint.patch = wrap(
+        Hint.patch,
+        lambda ret: publish({
+            'type': 'hint_updated',
+            'hint': Hint.get(
+                None, hint_id=ret['data']['id']
+            )['data']
+        })
+    )

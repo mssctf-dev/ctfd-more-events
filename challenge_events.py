@@ -1,58 +1,61 @@
 from flask import current_app, request
-from CTFd.plugins.challenges import BaseChallenge
 from CTFd.utils.user import get_current_team
 from CTFd.utils.user import get_current_user
-
-
-def get_current_user_json():
-    user = get_current_user()
-    if user:
-        return {
-            "id": user.id,
-            "name": user.name,
-            "hidden": user.hidden,
-            "team": user.team_id
-        }
-
-
-def get_current_team_json():
-    team = get_current_team()
-    if team:
-        return {
-            "id": team.id,
-            "name": team.name,
-            "hidden": team.hidden
-        }
+from CTFd.api.v1.challenges import (
+    ChallengeAttempt, ChallengeList, Challenge
+)
+from .wrapper import wrap
 
 
 def challenges():
-    for c in BaseChallenge.__subclasses__():
-        def wrap(func, data):
-            def new_func(*args, **kwargs):
-                ret = func(*args, **kwargs)
-                current_app.events_manager.publish(
-                    data=eval(data), type='challenge'
-                )
-                return ret
-            return new_func
+    def publish(data):
+        current_app.events_manager.publish(
+            data=data, type='challenge'
+        )
 
-        c.create = wrap(c.create, '''
-{
-    "type": "challenge_create",
-    "challenge": ret.id
-}
-''')
-        c.update = wrap(c.update, '''
-{
-    "type": "challenge_update",
-    "challenge": args[0].id if len(args)>=1 else kwargs["challenge"].id
-}
-''')
-        c.solve = wrap(c.solve, '''
-{
-    "type": "challenge_solved",
-    "challenge": (request.form or request.get_json())["challenge_id"],
-    "user": get_current_user_json(),
-    "team": get_current_team_json()
-}
-''')
+    def get_current_user_json():
+        user = get_current_user()
+        if user:
+            return {
+                "id": user.id,
+                "name": user.name,
+                "hidden": user.hidden,
+                "team": user.team_id
+            }
+
+    def get_current_team_json():
+        team = get_current_team()
+        if team:
+            return {
+                "id": team.id,
+                "name": team.name,
+                "hidden": team.hidden
+            }
+    
+    ChallengeAttempt.post = wrap(
+        ChallengeAttempt.post,
+        lambda ret: publish({
+            "type": "challenge_solved",
+            "challenge": (request.form or request.get_json())["challenge_id"],
+            "user": get_current_user_json(),
+            "team": get_current_team_json()
+        }) if (ret['success'] == True) and
+        (request.args.get("preview", False) == False) and
+        (ret['data']['status'] == 'correct') else None
+    )
+
+    ChallengeList.post = wrap(
+        ChallengeList.post,
+        lambda ret: publish({
+            "type": "challenge_created",
+            "challenge": ret['data']['id']
+        })
+    )
+
+    Challenge.patch = wrap(
+        Challenge.patch,
+        lambda ret: publish({
+            "type": "challenge_updated",
+            "challenge": ret['data']['id']
+        })
+    )
